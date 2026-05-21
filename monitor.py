@@ -95,7 +95,19 @@ def run_check() -> None:
         log.info("OK — alle %d leads in GHL.", len(meta_leads))
         return
 
-    new_missing = state.filter_new_leads(missing)
+    # Secundaire check: contact kan al in GHL bestaan maar met oudere dateAdded (bijv. via WhatsApp flow)
+    truly_missing = []
+    for lead in missing:
+        if ghl_client.contact_exists(lead.get("email", ""), lead.get("phone", "")):
+            log.info("Lead gevonden via directe GHL-lookup (dateAdded buiten venster): %s", _label(lead))
+        else:
+            truly_missing.append(lead)
+
+    if not truly_missing:
+        log.info("OK — alle leads gevonden in GHL na directe verificatie.")
+        return
+
+    new_missing = state.filter_new_leads(truly_missing)
     if not new_missing:
         log.info("Mismatch bekende leads — al eerder gerapporteerd, overgeslagen.")
         return

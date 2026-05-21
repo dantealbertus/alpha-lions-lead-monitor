@@ -101,6 +101,40 @@ def get_all_workflow_contacts(
     return all_contacts, counts
 
 
+def contact_exists(email: str, phone: str) -> bool:
+    """Controleert of een contact bestaat in GHL op basis van email of telefoon (tijdvenster-onafhankelijk)."""
+    location_id = os.environ.get("GHL_LOCATION_ID", "")
+    headers = _headers()
+
+    if email:
+        resp = requests.get(
+            f"{GHL_API}/contacts/search",
+            headers=headers,
+            params={"locationId": location_id, "query": email.strip(), "limit": 5},
+            timeout=15,
+        )
+        if resp.ok:
+            for c in resp.json().get("contacts", []):
+                if (c.get("email") or "").lower().strip() == email.lower().strip():
+                    return True
+
+    if phone:
+        digits = re.sub(r"\D", "", phone)
+        resp = requests.get(
+            f"{GHL_API}/contacts/search",
+            headers=headers,
+            params={"locationId": location_id, "query": digits, "limit": 5},
+            timeout=15,
+        )
+        if resp.ok:
+            for c in resp.json().get("contacts", []):
+                c_phone = re.sub(r"\D", "", c.get("phone") or "")
+                if c_phone and c_phone.endswith(digits[-9:]):
+                    return True
+
+    return False
+
+
 def get_contact_id_by_phone(phone: str) -> Optional[str]:
     """Zoekt een GHL contact op telefoonnummer via de search-endpoint."""
     location_id = os.environ.get("GHL_LOCATION_ID", "")
