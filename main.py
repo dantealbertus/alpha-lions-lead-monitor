@@ -28,7 +28,7 @@ scheduler.add_job(run_check, "interval", minutes=5, id="lead_monitor")
 scheduler.add_job(
     send_daily_summary,
     "cron",
-    hour=6,       # 08:00 Amsterdam = 06:00 UTC (zomer) / 07:00 UTC (winter)
+    hour=8,       # 08:00 Amsterdam-tijd (APScheduler past DST automatisch aan)
     minute=0,
     timezone="Europe/Amsterdam",
     id="daily_summary",

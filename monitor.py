@@ -8,6 +8,7 @@ import ghl_alert
 import ghl_client
 import meta_client
 import state
+from utils import normalize_phone
 
 load_dotenv()
 
@@ -29,11 +30,11 @@ def _workflow_ids() -> list[str]:
 
 def _is_match(meta_lead: dict, ghl_contacts: list[dict]) -> bool:
     email = meta_lead.get("email", "")
-    phone = meta_lead.get("phone", "")
+    phone = normalize_phone(meta_lead.get("phone", ""))
     for c in ghl_contacts:
-        if email and c.get("email") == email:
+        if email and (c.get("email") or "").lower().strip() == email:
             return True
-        if phone and c.get("phone") == phone:
+        if phone and normalize_phone(c.get("phone") or "") == phone:
             return True
     return False
 

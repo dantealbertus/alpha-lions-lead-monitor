@@ -1,14 +1,18 @@
 import os
-import re
+import time
 from datetime import datetime
 from typing import Any
 
 import requests
 
+from utils import normalize_phone
+
 GRAPH_API = "https://graph.facebook.com/v19.0"
 PAGE_ID = "396715913528745"
 
 _page_token_cache: str = ""
+_page_token_fetched_at: float = 0.0
+_PAGE_TOKEN_TTL = 23 * 3600  # ververs na 23 uur
 
 
 def _system_token() -> str:
@@ -19,8 +23,8 @@ def _system_token() -> str:
 
 
 def _page_token() -> str:
-    global _page_token_cache
-    if _page_token_cache:
+    global _page_token_cache, _page_token_fetched_at
+    if _page_token_cache and (time.time() - _page_token_fetched_at) < _PAGE_TOKEN_TTL:
         return _page_token_cache
     resp = requests.get(
         f"{GRAPH_API}/{PAGE_ID}",
@@ -29,16 +33,8 @@ def _page_token() -> str:
     )
     resp.raise_for_status()
     _page_token_cache = resp.json()["access_token"]
+    _page_token_fetched_at = time.time()
     return _page_token_cache
-
-
-def _normalize_phone(raw: str) -> str:
-    digits = re.sub(r"\D", "", raw)
-    if digits.startswith("00"):
-        digits = digits[2:]
-    if digits.startswith("0") and len(digits) == 10:
-        digits = "31" + digits[1:]
-    return "+" + digits if digits else ""
 
 
 def _get_forms() -> list[dict]:
@@ -60,7 +56,7 @@ def _extract_lead(field_data: list, form_name: str) -> dict:
         if name == "email":
             lead["email"] = value.lower().strip()
         elif name in ("phone_number", "phone", "telefoon", "telefoonnummer"):
-            lead["phone"] = _normalize_phone(value)
+            lead["phone"] = normalize_phone(value)
     return lead
 
 
@@ -79,7 +75,7 @@ def get_leads(since: datetime, until: datetime) -> list[dict]:
             ),
             "limit": 100,
         }
-        url: str | None = f"{GRAPH_API}/{form['id']}/leads"
+        url: "str | None" = f"{GRAPH_API}/{form['id']}/leads"
 
         while url:
             resp = requests.get(url, params=params, timeout=15)
