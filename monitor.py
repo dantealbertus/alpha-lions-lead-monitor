@@ -71,11 +71,6 @@ def run_check() -> None:
         log.info("Grace period beslaat heel venster.")
         return
 
-    window_key = state.window_key(window_start, meta_until)
-    if state.already_alerted(window_key):
-        log.info("Al gealerteerd voor dit venster.")
-        return
-
     try:
         meta_leads = meta_client.get_leads(window_start, meta_until)
         log.info("Meta leads: %d", len(meta_leads))
@@ -94,17 +89,21 @@ def run_check() -> None:
         log.info("Geen Meta-leads in venster.")
         return
 
-    today = now.strftime("%Y-%m-%d")
     missing = [l for l in meta_leads if not _is_match(l, ghl_contacts)]
 
     if not missing:
         log.info("OK — alle %d leads in GHL.", len(meta_leads))
         return
 
-    log.warning("MISMATCH: %d van %d leads niet in GHL.", len(missing), len(meta_leads))
+    new_missing = state.filter_new_leads(missing)
+    if not new_missing:
+        log.info("Mismatch bekende leads — al eerder gerapporteerd, overgeslagen.")
+        return
+
+    log.warning("MISMATCH: %d nieuwe leads niet in GHL (van %d totaal).", len(new_missing), len(meta_leads))
     try:
-        ghl_alert.send_mismatch_sms(len(meta_leads), len(ghl_contacts), missing, now)
-        state.record_alert(window_key)
-        state.record_mismatch(len(meta_leads), len(ghl_contacts), missing)
+        ghl_alert.send_mismatch_sms(len(meta_leads), len(ghl_contacts), new_missing, now)
+        state.mark_leads_alerted(new_missing)
+        state.record_mismatch(len(meta_leads), len(ghl_contacts), new_missing)
     except Exception as exc:
         log.error("Mismatch SMS fout: %s", exc)

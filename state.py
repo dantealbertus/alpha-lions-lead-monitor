@@ -34,6 +34,12 @@ def init_db() -> None:
             )
         """)
         con.execute("CREATE INDEX IF NOT EXISTS idx_ml_date ON mismatch_log(date)")
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS alerted_leads (
+                lead_key   TEXT NOT NULL PRIMARY KEY,
+                alerted_at TEXT NOT NULL
+            )
+        """)
 
 
 def window_key(window_start: datetime, window_end: datetime) -> str:
@@ -88,3 +94,35 @@ def get_mismatch_count_for_date(date: str) -> int:
             "SELECT COUNT(*) as cnt FROM mismatch_log WHERE date = ?", (date,)
         ).fetchone()
     return row["cnt"] if row else 0
+
+
+def _lead_key(lead: dict) -> "str | None":
+    return lead.get("email") or lead.get("phone") or None
+
+
+def filter_new_leads(leads: list[dict]) -> list[dict]:
+    if not leads:
+        return []
+    keys = [k for k in (_lead_key(l) for l in leads) if k]
+    if not keys:
+        return leads
+    placeholders = ",".join("?" * len(keys))
+    with _conn() as con:
+        seen = {
+            row[0]
+            for row in con.execute(
+                f"SELECT lead_key FROM alerted_leads WHERE lead_key IN ({placeholders})", keys
+            ).fetchall()
+        }
+    return [l for l in leads if _lead_key(l) not in seen]
+
+
+def mark_leads_alerted(leads: list[dict]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [(k, now) for l in leads if (k := _lead_key(l))]
+    if not rows:
+        return
+    with _conn() as con:
+        con.executemany(
+            "INSERT OR IGNORE INTO alerted_leads (lead_key, alerted_at) VALUES (?, ?)", rows
+        )
