@@ -71,9 +71,11 @@ def _shutdown(sig, frame):
 signal.signal(signal.SIGTERM, _shutdown)
 signal.signal(signal.SIGINT, _shutdown)
 
+# Start scheduler bij laden van de module (werkt zowel met gunicorn als python main.py)
+log.info("Lead Monitor gestart — check elke 5 min, dagelijks overzicht 08:00 NL.")
+scheduler.start()
+run_check()
+
 if __name__ == "__main__":
-    log.info("Lead Monitor gestart — check elke 5 min, dagelijks overzicht 08:00 NL.")
-    scheduler.start()
-    run_check()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
