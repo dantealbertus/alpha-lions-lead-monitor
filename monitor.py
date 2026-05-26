@@ -46,7 +46,8 @@ def _label(lead: dict) -> str:
 def run_check() -> None:
     window_minutes = int(os.environ.get("WINDOW_MINUTES", 30))
     grace_minutes = int(os.environ.get("GRACE_MINUTES", 10))
-    spike_threshold = int(os.environ.get("SPIKE_THRESHOLD", 2))
+    spike_threshold = int(os.environ.get("SPIKE_THRESHOLD", 4))
+    spike_window = int(os.environ.get("SPIKE_WINDOW_MINUTES", 15))
 
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(minutes=window_minutes)
@@ -54,15 +55,15 @@ def run_check() -> None:
     log.info("Check | venster: %s – %s UTC", window_start.strftime("%H:%M"), now.strftime("%H:%M"))
 
     # ── Spike check ───────────────────────────────────────────────────────────
-    spike_since = now - timedelta(minutes=5)
+    spike_since = now - timedelta(minutes=spike_window)
     try:
         spike_contacts, spike_counts = ghl_client.get_all_workflow_contacts(_workflow_ids(), spike_since, now)
         spike_total = sum(spike_counts.values())
         if spike_total > spike_threshold:
-            log.warning("SPIKE: %d leads in 5 min.", spike_total)
-            ghl_alert.send_spike_sms(spike_counts, spike_total, spike_contacts, now)
+            log.warning("SPIKE: %d leads in %d min.", spike_total, spike_window)
+            ghl_alert.send_spike_sms(spike_counts, spike_total, spike_contacts, now, spike_window)
         else:
-            log.info("Spike OK: %d <= %d", spike_total, spike_threshold)
+            log.info("Spike OK: %d <= %d (venster %d min)", spike_total, spike_threshold, spike_window)
     except Exception as exc:
         log.error("Spike check fout: %s", exc)
 

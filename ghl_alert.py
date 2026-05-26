@@ -51,7 +51,7 @@ def send_mismatch_sms(meta_count: int, ghl_count: int, missing_leads: list, wind
     _send_sms(message)
 
 
-def send_spike_sms(counts_per_workflow: dict, total: int, contacts: list, window_end: datetime) -> None:
+def send_spike_sms(counts_per_workflow: dict, total: int, contacts: list, window_end: datetime, window_minutes: int = 15) -> None:
     flow_parts = "\n".join(
         f"• Flow {i+1}: {v} leads"
         for i, (_, v) in enumerate(counts_per_workflow.items()) if v > 0
@@ -60,7 +60,7 @@ def send_spike_sms(counts_per_workflow: dict, total: int, contacts: list, window
         f"⚡ *SPIKE GEDETECTEERD*\n"
         f"🕐 {_ams_time(window_end)}\n"
         f"\n"
-        f"*{total} nieuwe leads in 5 minuten toegevoegd aan de WhatsApp flows*\n"
+        f"*{total} nieuwe leads in {window_minutes} minuten toegevoegd aan de WhatsApp flows*\n"
         f"\n"
         f"*Per workflow:*\n"
         f"{flow_parts}\n"
