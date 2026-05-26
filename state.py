@@ -45,6 +45,10 @@ def init_db() -> None:
             )
         """)
         con.execute("CREATE INDEX IF NOT EXISTS idx_we_received_at ON workflow_events(received_at)")
+        # Migratie: workflow_no kolom toevoegen als die nog niet bestaat
+        existing = {row[1] for row in con.execute("PRAGMA table_info(workflow_events)").fetchall()}
+        if "workflow_no" not in existing:
+            con.execute("ALTER TABLE workflow_events ADD COLUMN workflow_no TEXT NOT NULL DEFAULT ''")
     purge_old_alerted_leads()
     purge_old_workflow_events()
 
