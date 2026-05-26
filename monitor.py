@@ -58,12 +58,19 @@ def run_check() -> None:
     spike_since = now - timedelta(minutes=spike_window)
     try:
         spike_contacts, spike_counts = ghl_client.get_all_workflow_contacts(_workflow_ids(), spike_since, now)
-        spike_total = sum(spike_counts.values())
+        seen_keys: set[str] = set()
+        unique_contacts: list[dict] = []
+        for c in spike_contacts:
+            key = c.get("email") or c.get("phone")
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                unique_contacts.append(c)
+        spike_total = len(unique_contacts)
         if spike_total > spike_threshold:
-            log.warning("SPIKE: %d leads in %d min.", spike_total, spike_window)
-            ghl_alert.send_spike_sms(spike_counts, spike_total, spike_contacts, now, spike_window)
+            log.warning("SPIKE: %d unieke leads in %d min.", spike_total, spike_window)
+            ghl_alert.send_spike_sms(spike_counts, spike_total, unique_contacts, now, spike_window)
         else:
-            log.info("Spike OK: %d <= %d (venster %d min)", spike_total, spike_threshold, spike_window)
+            log.info("Spike OK: %d unieke leads <= %d (venster %d min)", spike_total, spike_threshold, spike_window)
     except Exception as exc:
         log.error("Spike check fout: %s", exc)
 
