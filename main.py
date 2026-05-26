@@ -49,6 +49,7 @@ def workflow_webhook():
         return jsonify({"error": "unauthorized"}), 401
 
     data = request.get_json(force=True) or {}
+    log.info("Webhook payload: %s", data)
     workflow_id = data.get("workflowId", "unknown")
     workflow_no = str(data.get("workflowNo", ""))
     email = (data.get("email") or "").lower().strip()
