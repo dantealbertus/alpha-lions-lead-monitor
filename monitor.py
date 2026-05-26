@@ -60,11 +60,12 @@ def run_check() -> None:
                 seen.add(key)
                 unique_contacts.append(e)
 
-        # Per-workflow breakdown op basis van eerste event per unieke lead
+        # Per-workflow breakdown — gebruik workflowNo als label indien beschikbaar
         counts: dict[str, int] = {}
         for e in spike_events:
-            wf = e.get("workflow_id", "unknown")[:8]
-            counts[wf] = counts.get(wf, 0) + 1
+            wf_no = e.get("workflow_no", "")
+            wf_label = f"Flow {wf_no}" if wf_no else e.get("workflow_id", "unknown")[:8]
+            counts[wf_label] = counts.get(wf_label, 0) + 1
 
         spike_total = len(unique_contacts)
         if spike_total > spike_threshold:

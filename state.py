@@ -36,11 +36,12 @@ def init_db() -> None:
         """)
         con.execute("""
             CREATE TABLE IF NOT EXISTS workflow_events (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                workflow_id TEXT NOT NULL DEFAULT '',
-                email       TEXT NOT NULL DEFAULT '',
-                phone       TEXT NOT NULL DEFAULT '',
-                received_at TEXT NOT NULL
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id  TEXT NOT NULL DEFAULT '',
+                workflow_no  TEXT NOT NULL DEFAULT '',
+                email        TEXT NOT NULL DEFAULT '',
+                phone        TEXT NOT NULL DEFAULT '',
+                received_at  TEXT NOT NULL
             )
         """)
         con.execute("CREATE INDEX IF NOT EXISTS idx_we_received_at ON workflow_events(received_at)")
@@ -60,19 +61,19 @@ def purge_old_workflow_events() -> None:
         con.execute("DELETE FROM workflow_events WHERE received_at < ?", (cutoff,))
 
 
-def record_workflow_event(workflow_id: str, email: str, phone: str) -> None:
+def record_workflow_event(workflow_id: str, workflow_no: str, email: str, phone: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with _conn() as con:
         con.execute(
-            "INSERT INTO workflow_events (workflow_id, email, phone, received_at) VALUES (?,?,?,?)",
-            (workflow_id, email, phone, now),
+            "INSERT INTO workflow_events (workflow_id, workflow_no, email, phone, received_at) VALUES (?,?,?,?,?)",
+            (workflow_id, workflow_no, email, phone, now),
         )
 
 
 def get_workflow_events(since: datetime, until: datetime) -> list[dict]:
     with _conn() as con:
         rows = con.execute(
-            "SELECT workflow_id, email, phone, received_at FROM workflow_events "
+            "SELECT workflow_id, workflow_no, email, phone, received_at FROM workflow_events "
             "WHERE received_at >= ? AND received_at <= ? ORDER BY received_at",
             (since.isoformat(), until.isoformat()),
         ).fetchall()

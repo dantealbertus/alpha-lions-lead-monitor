@@ -50,14 +50,15 @@ def workflow_webhook():
 
     data = request.get_json(force=True) or {}
     workflow_id = data.get("workflowId", "unknown")
+    workflow_no = str(data.get("workflowNo", ""))
     email = (data.get("email") or "").lower().strip()
     phone = normalize_phone(data.get("phone") or "")
 
     if not email and not phone:
         return jsonify({"error": "email of phone vereist"}), 400
 
-    state.record_workflow_event(workflow_id, email, phone)
-    log.info("Webhook ontvangen | workflow=%s contact=%s", workflow_id, email or phone)
+    state.record_workflow_event(workflow_id, workflow_no, email, phone)
+    log.info("Webhook ontvangen | workflow=%s (#%s) contact=%s", workflow_id, workflow_no, email or phone)
     return jsonify({"ok": True})
 
 
