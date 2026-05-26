@@ -48,7 +48,7 @@ def get_workflow_contacts(
             params={"locationId": location_id, "workflowId": workflow_id, "limit": 100, "page": page},
             timeout=15,
         )
-        if resp.status_code == 404:
+        if resp.status_code in (404, 422):
             break
         resp.raise_for_status()
         batch = resp.json().get("contacts", [])
