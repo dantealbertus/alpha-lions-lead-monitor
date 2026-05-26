@@ -45,6 +45,12 @@ def init_db() -> None:
             )
         """)
         con.execute("CREATE INDEX IF NOT EXISTS idx_we_received_at ON workflow_events(received_at)")
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS spike_log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                alerted_at TEXT NOT NULL
+            )
+        """)
         # Migratie: workflow_no kolom toevoegen als die nog niet bestaat
         existing = {row[1] for row in con.execute("PRAGMA table_info(workflow_events)").fetchall()}
         if "workflow_no" not in existing:
@@ -63,6 +69,21 @@ def purge_old_workflow_events() -> None:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=ALERTED_LEAD_TTL_DAYS)).isoformat()
     with _conn() as con:
         con.execute("DELETE FROM workflow_events WHERE received_at < ?", (cutoff,))
+
+
+def get_last_spike_alerted_at() -> "datetime | None":
+    with _conn() as con:
+        row = con.execute(
+            "SELECT alerted_at FROM spike_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if not row:
+        return None
+    return datetime.fromisoformat(row["alerted_at"])
+
+
+def record_spike_alerted() -> None:
+    with _conn() as con:
+        con.execute("INSERT INTO spike_log (alerted_at) VALUES (?)", (datetime.now(timezone.utc).isoformat(),))
 
 
 def record_workflow_event(workflow_id: str, workflow_no: str, email: str, phone: str) -> None:

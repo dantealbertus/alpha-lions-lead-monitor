@@ -69,8 +69,14 @@ def run_check() -> None:
 
         spike_total = len(unique_contacts)
         if spike_total > spike_threshold:
-            log.warning("SPIKE: %d unieke leads in %d min.", spike_total, spike_window)
-            ghl_alert.send_spike_sms(counts, spike_total, unique_contacts, now, spike_window)
+            last_spike = state.get_last_spike_alerted_at()
+            cooldown_ok = not last_spike or (now - last_spike).total_seconds() >= spike_window * 60
+            if cooldown_ok:
+                log.warning("SPIKE: %d unieke leads in %d min.", spike_total, spike_window)
+                ghl_alert.send_spike_sms(counts, spike_total, unique_contacts, now, spike_window)
+                state.record_spike_alerted()
+            else:
+                log.info("Spike cooldown actief — al gealerteerd om %s UTC", last_spike.strftime("%H:%M"))
         else:
             log.info("Spike OK: %d unieke leads <= %d (venster %d min)", spike_total, spike_threshold, spike_window)
     except Exception as exc:
