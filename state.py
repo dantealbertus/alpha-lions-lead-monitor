@@ -34,13 +34,49 @@ def init_db() -> None:
                 alerted_at TEXT NOT NULL
             )
         """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS workflow_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT NOT NULL DEFAULT '',
+                email       TEXT NOT NULL DEFAULT '',
+                phone       TEXT NOT NULL DEFAULT '',
+                received_at TEXT NOT NULL
+            )
+        """)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_we_received_at ON workflow_events(received_at)")
     purge_old_alerted_leads()
+    purge_old_workflow_events()
 
 
 def purge_old_alerted_leads() -> None:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=ALERTED_LEAD_TTL_DAYS)).isoformat()
     with _conn() as con:
         con.execute("DELETE FROM alerted_leads WHERE alerted_at < ?", (cutoff,))
+
+
+def purge_old_workflow_events() -> None:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=ALERTED_LEAD_TTL_DAYS)).isoformat()
+    with _conn() as con:
+        con.execute("DELETE FROM workflow_events WHERE received_at < ?", (cutoff,))
+
+
+def record_workflow_event(workflow_id: str, email: str, phone: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _conn() as con:
+        con.execute(
+            "INSERT INTO workflow_events (workflow_id, email, phone, received_at) VALUES (?,?,?,?)",
+            (workflow_id, email, phone, now),
+        )
+
+
+def get_workflow_events(since: datetime, until: datetime) -> list[dict]:
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT workflow_id, email, phone, received_at FROM workflow_events "
+            "WHERE received_at >= ? AND received_at <= ? ORDER BY received_at",
+            (since.isoformat(), until.isoformat()),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def record_mismatch(meta_count: int, ghl_count: int, contacts: list) -> None:

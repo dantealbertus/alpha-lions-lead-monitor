@@ -20,27 +20,19 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def _workflow_ids() -> list[str]:
-    raw = os.environ.get("GHL_WORKFLOW_IDS", "")
-    ids = [i.strip() for i in raw.split(",") if i.strip()]
-    if not ids:
-        raise ValueError("GHL_WORKFLOW_IDS niet ingesteld in .env")
-    return ids
-
-
-def _is_match(meta_lead: dict, ghl_contacts: list[dict]) -> bool:
-    email = meta_lead.get("email", "")
-    phone = normalize_phone(meta_lead.get("phone", ""))
-    for c in ghl_contacts:
-        if email and (c.get("email") or "").lower().strip() == email:
-            return True
-        if phone and normalize_phone(c.get("phone") or "") == phone:
-            return True
-    return False
-
-
 def _label(lead: dict) -> str:
     return lead.get("email") or lead.get("phone") or "onbekend"
+
+
+def _is_in_events(lead: dict, events: list[dict]) -> bool:
+    email = (lead.get("email") or "").lower().strip()
+    phone = normalize_phone(lead.get("phone") or "")
+    for e in events:
+        if email and e.get("email") == email:
+            return True
+        if phone and normalize_phone(e.get("phone") or "") == phone:
+            return True
+    return False
 
 
 def run_check() -> None:
@@ -54,21 +46,30 @@ def run_check() -> None:
 
     log.info("Check | venster: %s – %s UTC", window_start.strftime("%H:%M"), now.strftime("%H:%M"))
 
-    # ── Spike check ───────────────────────────────────────────────────────────
+    # ── Spike check (via webhook events) ─────────────────────────────────────
     spike_since = now - timedelta(minutes=spike_window)
     try:
-        spike_contacts, spike_counts = ghl_client.get_all_workflow_contacts(_workflow_ids(), spike_since, now)
-        seen_keys: set[str] = set()
+        spike_events = state.get_workflow_events(spike_since, now)
+
+        # Dedupleer op email/phone voor unieke leads
+        seen: set[str] = set()
         unique_contacts: list[dict] = []
-        for c in spike_contacts:
-            key = c.get("email") or c.get("phone")
-            if key and key not in seen_keys:
-                seen_keys.add(key)
-                unique_contacts.append(c)
+        for e in spike_events:
+            key = e.get("email") or e.get("phone")
+            if key and key not in seen:
+                seen.add(key)
+                unique_contacts.append(e)
+
+        # Per-workflow breakdown op basis van eerste event per unieke lead
+        counts: dict[str, int] = {}
+        for e in spike_events:
+            wf = e.get("workflow_id", "unknown")[:8]
+            counts[wf] = counts.get(wf, 0) + 1
+
         spike_total = len(unique_contacts)
         if spike_total > spike_threshold:
             log.warning("SPIKE: %d unieke leads in %d min.", spike_total, spike_window)
-            ghl_alert.send_spike_sms(spike_counts, spike_total, unique_contacts, now, spike_window)
+            ghl_alert.send_spike_sms(counts, spike_total, unique_contacts, now, spike_window)
         else:
             log.info("Spike OK: %d unieke leads <= %d (venster %d min)", spike_total, spike_threshold, spike_window)
     except Exception as exc:
@@ -87,28 +88,27 @@ def run_check() -> None:
         log.error("Meta API fout: %s", exc)
         return
 
-    try:
-        ghl_contacts, _ = ghl_client.get_all_workflow_contacts(_workflow_ids(), window_start, now)
-        log.info("GHL contacten: %d", len(ghl_contacts))
-    except Exception as exc:
-        log.error("GHL API fout: %s", exc)
-        return
-
     if not meta_leads:
         log.info("Geen Meta-leads in venster.")
         return
 
-    missing = [l for l in meta_leads if not _is_match(l, ghl_contacts)]
+    # Haal workflow events op voor het volledige venster (inclusief grace)
+    wf_events = state.get_workflow_events(window_start, now)
+    wf_count = len({e.get("email") or e.get("phone") for e in wf_events if e.get("email") or e.get("phone")})
+    log.info("Workflow events (uniek): %d", wf_count)
+
+    # Primaire check: zit de lead in de ontvangen webhook events?
+    missing = [l for l in meta_leads if not _is_in_events(l, wf_events)]
 
     if not missing:
-        log.info("OK — alle %d leads in GHL.", len(meta_leads))
+        log.info("OK — alle %d leads in workflows.", len(meta_leads))
         return
 
-    # Secundaire check: contact kan al in GHL bestaan maar met oudere dateAdded (bijv. via WhatsApp flow)
+    # Fallback: bestaat het contact al in GHL (bijv. oudere lead die opnieuw converteert)?
     truly_missing = []
     for lead in missing:
         if ghl_client.contact_exists(lead.get("email", ""), lead.get("phone", "")):
-            log.info("Lead gevonden via directe GHL-lookup (dateAdded buiten venster): %s", _label(lead))
+            log.info("Lead gevonden via directe GHL-lookup: %s", _label(lead))
         else:
             truly_missing.append(lead)
 
@@ -121,10 +121,10 @@ def run_check() -> None:
         log.info("Mismatch bekende leads — al eerder gerapporteerd, overgeslagen.")
         return
 
-    log.warning("MISMATCH: %d nieuwe leads niet in GHL (van %d totaal).", len(new_missing), len(meta_leads))
+    log.warning("MISMATCH: %d nieuwe leads niet in workflow (van %d totaal).", len(new_missing), len(meta_leads))
     try:
-        ghl_alert.send_mismatch_sms(len(meta_leads), len(ghl_contacts), new_missing, now)
+        ghl_alert.send_mismatch_sms(len(meta_leads), wf_count, new_missing, now)
         state.mark_leads_alerted(new_missing)
-        state.record_mismatch(len(meta_leads), len(ghl_contacts), new_missing)
+        state.record_mismatch(len(meta_leads), wf_count, new_missing)
     except Exception as exc:
         log.error("Mismatch SMS fout: %s", exc)
