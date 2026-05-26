@@ -1,9 +1,10 @@
 import json
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "state.db"
+DB_PATH = Path(os.environ.get("DB_PATH", str(Path(__file__).parent / "state.db")))
 ALERTED_LEAD_TTL_DAYS = 7
 
 
